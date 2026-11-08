@@ -10,6 +10,7 @@ import httpx
 BASE_URL = "https://clob.polymarket.com"
 PAGE_SIZE = 500
 END_CURSOR = "LTE="
+MAX_PAGES = 2000
 
 
 def client(timeout: float = 120.0) -> httpx.Client:
@@ -34,14 +35,21 @@ def _get(http: httpx.Client, path: str, params: dict, retries: int) -> dict:
 
 
 def reward_markets(http: httpx.Client, retries: int = 5) -> list[dict]:
-    """Every market currently carrying a reward configuration, as returned by the API."""
-    out: list[dict] = []
+    """Every market currently carrying a reward configuration, as returned by the API.
+
+    Pages are read in the API's default order: sorting by rate is not stable across pages
+    (ties move between requests), which both repeats and skips markets.
+    """
+    out: dict[str, dict] = {}
     cursor = ""
-    while cursor != END_CURSOR:
-        params = {"page_size": PAGE_SIZE, "order_by": "rate_per_day", "position": "DESC"}
+    for _ in range(MAX_PAGES):
+        params = {"page_size": PAGE_SIZE}
         if cursor:
             params["next_cursor"] = cursor
         page = _get(http, "/rewards/markets/multi", params, retries)
-        out += page.get("data") or []
+        for m in page.get("data") or []:
+            out[m["condition_id"]] = m
         cursor = page.get("next_cursor") or END_CURSOR
-    return out
+        if cursor == END_CURSOR:
+            return list(out.values())
+    raise RuntimeError(f"reward list did not end after {MAX_PAGES} pages")
