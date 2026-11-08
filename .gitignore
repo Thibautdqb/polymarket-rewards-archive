@@ -5,3 +5,4 @@ data/
 *.db
 *.db-*
 *.jsonl.gz
+data_collect.log
