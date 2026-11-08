@@ -3,11 +3,12 @@
 A continuous archive of Polymarket **liquidity-reward configurations**.
 
 Polymarket pays makers a daily reward pool per market (`rate_per_day`, `max_spread`,
-`min_size`). The public CLOB API only shows the configuration **while a market is open**:
-once it closes, `/rewards/markets/{condition_id}` comes back empty, `/markets/{condition_id}`
-reports `rates: null`, and Gamma drops `clobRewards`. On some market families, such as daily
-temperature markets, rates are also re-set several times a day. Nobody can tell, after the
-fact, what a given market paid on a given day.
+`min_size`). The public CLOB API only shows the **current** configuration. Once a market closes:
+
+- `/rewards/markets/{condition_id}` comes back empty;
+- in most cases, `/markets/{condition_id}` reports `rates: null` and Gamma drops `clobRewards`. On a sample of 10 closed weather and mention markets, 9 had lost their configuration, and the 10th kept only its final value.
+
+Rates also move while a market is open. Daily temperature markets, for example, get new rates several times a day, and the API keeps no record of earlier values. Nobody can tell, after the fact, what a given market paid on a given day.
 
 That missing history is exactly what you need to:
 
