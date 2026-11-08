@@ -56,3 +56,14 @@ def test_several_configs_add_up():
     m["rewards_config"].append({"id": 2, "rate_per_day": 5, "start_date": "2026-11-01", "end_date": "2500-12-31"})
     a.record([m], T0)
     assert a.rate_at("a", T0) == 15
+
+
+def test_snapshots_without_metadata_keep_names():
+    a = Archive(":memory:")
+    bare = {k: v for k, v in market("a", 10).items() if k in ("condition_id", "rewards_config", "rewards_max_spread", "rewards_min_size")}
+    a.record([bare], T0)
+    assert a.missing_meta(10) == ["a"]
+    a.set_meta({"condition_id": "a", "market_slug": "slug-a", "question": "q?", "tokens": [{"token_id": "1", "outcome": "Yes"}]})
+    a.record([bare], T0 + STEP)
+    assert a.missing_meta(10) == []
+    assert a.db.execute("select market_slug from markets").fetchone()[0] == "slug-a"

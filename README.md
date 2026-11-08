@@ -34,7 +34,7 @@ uv sync && uv run pmrewards --help
 pmrewards --db data/rewards.db collect --every 300 --raw-dir data/raw
 ```
 
-- Each snapshot reads all pages of `GET /rewards/markets/multi` (tens of thousands of markets, one request per 500).
+- Each snapshot reads `GET /rewards/markets/current`, which lists only configurations in force (about 12k markets, a few MB, about 30 s). The larger `/rewards/markets/multi` also returns about 200k markets whose rewards have ended, and takes over ten minutes. Slugs, questions and tokens are looked up once per new market from `GET /markets/{condition_id}`.
 - A snapshot is written only when **every** page arrives, so a network failure never fakes a market closure.
 - `--raw-dir` also keeps the complete API response every hour (`--raw-every`) as `jsonl.gz`. These files hold token prices, competitiveness and anything else the API adds later.
 - `--once` takes a single snapshot, for cron.

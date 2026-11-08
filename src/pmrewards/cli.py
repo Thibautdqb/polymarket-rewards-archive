@@ -19,18 +19,34 @@ from pmrewards.store import Archive
 log = logging.getLogger("pmrewards")
 
 
-def snapshot_once(archive: Archive, http, raw_dir: Path | None) -> None:
+def snapshot_once(archive: Archive, http, raw_dir: Path | None, meta_per_snapshot: int = 300) -> None:
     t0 = time.monotonic()
     ts = datetime.now(timezone.utc).replace(microsecond=0)
-    markets = api.reward_markets(http)
-    changed = archive.record(markets, ts)
-    if raw_dir is not None:
+    if raw_dir is None:
+        markets = api.current_rewards(http)
+    else:
         day = raw_dir / ts.strftime("%Y-%m-%d")
         day.mkdir(parents=True, exist_ok=True)
-        with gzip.open(day / f"{ts:%H%M%S}.jsonl.gz", "wt") as f:
-            for m in markets:
-                f.write(json.dumps(m, separators=(",", ":")) + "\n")
-    log.info("%d markets, %d period changes, %.1fs", len(markets), changed, time.monotonic() - t0)
+        path = day / f"{ts:%H%M%S}.jsonl.gz"
+        part = path.with_name(path.name + ".part")
+        try:
+            with gzip.open(part, "wt") as f:
+                markets = api.current_rewards(http, raw=f)
+        except BaseException:
+            part.unlink(missing_ok=True)
+            raise
+        part.rename(path)
+    changed = archive.record(markets, ts)
+    # Names and tokens are not in the reward list: look them up once per new market, a
+    # bounded number per snapshot so a first run catches up over a few cycles.
+    named = 0
+    for cid in archive.missing_meta(meta_per_snapshot):
+        try:
+            archive.set_meta(api.market_meta(http, cid))
+            named += 1
+        except Exception:
+            log.warning("metadata lookup failed for %s", cid)
+    log.info("%d markets, %d period changes, %d named, %.1fs", len(markets), changed, named, time.monotonic() - t0)
 
 
 def cmd_collect(args) -> None:
@@ -43,7 +59,7 @@ def cmd_collect(args) -> None:
 
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
-    last_raw = 0.0
+    last_raw = float("-inf")
     with api.client() as http:
         while not stop:
             start = time.monotonic()

@@ -16,7 +16,7 @@ from pathlib import Path
 SCHEMA = """
 create table if not exists markets (
     condition_id text primary key,
-    market_id    text,
+    market_id    text,          -- null when only seen through /rewards/markets/current
     market_slug  text,
     event_slug   text,
     question     text,
@@ -104,13 +104,16 @@ class Archive:
         seen: dict[tuple[str, str], Config] = {}
         with self.db:
             for m in markets:
-                tokens = json.dumps([{"token_id": t.get("token_id"), "outcome": t.get("outcome")} for t in m.get("tokens") or []])
                 self.db.execute(
-                    """insert into markets values (?,?,?,?,?,?,?,?)
+                    """insert into markets (condition_id, market_id, market_slug, event_slug, question, tokens, first_seen, last_seen)
+                       values (?,?,?,?,?,?,?,?)
                        on conflict (condition_id) do update set last_seen = excluded.last_seen,
-                         market_slug = excluded.market_slug, event_slug = excluded.event_slug, question = excluded.question""",
-                    (m["condition_id"], str(m.get("market_id") or ""), m.get("market_slug"), m.get("event_slug"),
-                     m.get("question"), tokens, now, now),
+                         market_slug = coalesce(excluded.market_slug, markets.market_slug),
+                         event_slug = coalesce(excluded.event_slug, markets.event_slug),
+                         question = coalesce(excluded.question, markets.question),
+                         tokens = coalesce(excluded.tokens, markets.tokens)""",
+                    (m["condition_id"], m.get("market_id"), m.get("market_slug"), m.get("event_slug"), m.get("question"),
+                     json.dumps(m["tokens"]) if m.get("tokens") else None, now, now),
                 )
                 for c in configs_of(m):
                     seen[(c.condition_id, c.config_id)] = c
@@ -139,6 +142,20 @@ class Archive:
                 (now, len(markets), len(seen), sum(c.rate_per_day for c in seen.values()), changed),
             )
         return changed
+
+    def missing_meta(self, limit: int) -> list[str]:
+        """Markets seen in a snapshot whose slug and tokens were not fetched yet, newest first."""
+        rows = self.db.execute(
+            "select condition_id from markets where market_slug is null order by first_seen desc limit ?", (limit,)
+        )
+        return [r[0] for r in rows]
+
+    def set_meta(self, meta: dict) -> None:
+        with self.db:
+            self.db.execute(
+                "update markets set market_slug = ?, question = ?, tokens = ? where condition_id = ?",
+                (meta.get("market_slug"), meta.get("question"), json.dumps(meta.get("tokens") or []), meta["condition_id"]),
+            )
 
     def rate_at(self, condition_id: str, ts: datetime) -> float | None:
         """Total daily reward rate in force on a market at ts, or None if it was not observed then.
