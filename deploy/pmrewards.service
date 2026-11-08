@@ -1,0 +1,15 @@
+[Unit]
+Description=Polymarket reward-configuration archive
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pmrewards
+WorkingDirectory=/opt/pmrewards
+ExecStart=/opt/pmrewards/.venv/bin/pmrewards --db /var/lib/pmrewards/rewards.db collect --every 300 --raw-dir /var/lib/pmrewards/raw
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
