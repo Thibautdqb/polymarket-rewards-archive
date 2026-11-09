@@ -90,7 +90,7 @@ History only exists from the moment a collector starts, so start early and keep 
 pmrewards rate 0x5691e3bc... 2026-11-08T12:00:00Z   # rate in force at that instant
 pmrewards history 0x5691e3bc...                      # every period of one market, json lines
 pmrewards export --since 2026-11-01 --format parquet --out rewards.parquet
-pmrewards stats                                      # coverage and collection gaps
+pmrewards stats                                      # coverage, rate changes vs arrivals/departures, gaps
 ```
 
 From Python:

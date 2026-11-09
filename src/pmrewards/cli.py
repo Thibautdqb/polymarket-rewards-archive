@@ -117,6 +117,24 @@ def cmd_stats(args) -> None:
     print(f"markets     {db.execute('select count(*) from markets').fetchone()[0]}")
     print(f"periods     {db.execute('select count(*) from periods').fetchone()[0]}  "
           f"(current {db.execute('select count(*) from periods where closed_at is null').fetchone()[0]})")
+    # A period ends either because its values changed (a successor starts at its closed_at)
+    # or because the configuration left the list; it starts either from a change or fresh.
+    changed = db.execute(
+        """select count(*), sum(a.rate_per_day != b.rate_per_day), count(distinct case when a.rate_per_day != b.rate_per_day then a.condition_id end)
+           from periods a join periods b on a.condition_id = b.condition_id and a.config_id = b.config_id and b.first_seen = a.closed_at"""
+    ).fetchone()
+    first_snap = first or ""
+    appeared = db.execute(
+        """select count(*) from periods p where p.first_seen > ? and not exists (select 1 from periods a
+           where a.condition_id = p.condition_id and a.config_id = p.config_id and a.closed_at = p.first_seen)""", (first_snap,)
+    ).fetchone()[0]
+    left = db.execute(
+        """select count(*) from periods p where p.closed_at is not null and not exists (select 1 from periods b
+           where b.condition_id = p.condition_id and b.config_id = p.config_id and b.first_seen = p.closed_at)"""
+    ).fetchone()[0]
+    print(f"  value changes   {changed[0]}  (rate changes {changed[1] or 0} on {changed[2]} markets)")
+    print(f"  appeared        {appeared}  (after the first snapshot)")
+    print(f"  left the list   {left}")
     gaps = db.execute(
         """select ts, prev from (select ts, lag(ts) over (order by ts) prev from snapshots)
            where prev is not null and (julianday(ts) - julianday(prev)) * 86400 > ?""",

@@ -67,3 +67,17 @@ def test_snapshots_without_metadata_keep_names():
     a.record([bare], T0 + STEP)
     assert a.missing_meta(10) == []
     assert a.db.execute("select market_slug from markets").fetchone()[0] == "slug-a"
+
+
+def test_stats_separates_rate_changes_from_arrivals(capsys, tmp_path):
+    from pmrewards.cli import main
+    db = tmp_path / "r.db"
+    a = Archive(db)
+    a.record([market("a", 10)], T0)
+    a.record([market("a", 25), market("b", 5)], T0 + STEP)
+    a.record([market("b", 5)], T0 + 2 * STEP)
+    a.close()
+    main(["--db", str(db), "stats"])
+    out = capsys.readouterr().out
+    assert "value changes   1  (rate changes 1 on 1 markets)" in out
+    assert "appeared        1" in out and "left the list   1" in out
